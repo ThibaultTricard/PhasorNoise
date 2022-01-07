@@ -1,0 +1,3 @@
+[submodule "LavaCake"]
+	path = LavaCake
+	url = https://github.com/ThibaultTricard/LavaCake.git
