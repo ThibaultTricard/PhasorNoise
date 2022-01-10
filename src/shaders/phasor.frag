@@ -1,5 +1,5 @@
 #version 450
-layout( location = 0 ) in vec2 uv;
+layout( location = 0 ) in vec2 TexCoord;
 
 layout( location = 0 ) out vec4 color;
 
@@ -12,6 +12,7 @@ layout( set = 0, binding = 0 ) uniform UniformBuffer {
 	int _impPerKernel;
 	int _profile;
 	float _pwmRatio;
+	float _aspectRatio;
 };
 
 float _kr;
@@ -94,11 +95,9 @@ vec2 phasor_noise(vec2 uv)
     return noise;
 }
 
-
-
 void main(){
-	init_noise();
-	vec2 noise = phasor_noise(uv);
+	init_noise(); 
+	vec2 noise = phasor_noise(TexCoord / vec2(1.0,  _aspectRatio));
 	if(_profile == 0){ // complex view
 		color = vec4(noise, 0.0,0.0);
 	}
@@ -109,7 +108,7 @@ void main(){
 		float phi = atan(noise.y,noise.x);
 		color = vec4(vec3(sin(phi)*0.5 + 0.5),0.0);
 	}
-	else if(_profile == 3){// sawtooth
+	else if(_profile == 3){// sawtooth 
 		float phi = atan(noise.y,noise.x) + M_PI;
 		color = vec4(vec3(phi/(2.0 * M_PI)),0.0);
 	}

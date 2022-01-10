@@ -10,53 +10,27 @@ std::string prefix = "../";
 #else
 std::string prefix = "";
 #endif
+ImGuiWrapper* gui;
+UniformBuffer noiseParameter;
+VertexBuffer* quadBuffer;
 
-int main() {
+bool g_resize = false;
 
-  ErrorCheck::PrintError(true);
+void window_size_callback(GLFWwindow* window, int width, int height)
+{
+  g_resize = true;
+}
 
-  Window w("Phasor Noise", 1000, 1000);
-
-  ImGuiWrapper* gui = new ImGuiWrapper();
-
-  Device* d = Device::getDevice();
-  d->initDevices(0, 1, w.m_windowParams, nullptr);
-  auto dPhysical = d->getPhysicalDevice();
+RenderPass* createRenderPass(Window& w, Queue* queue, CommandBuffer& commandBuffer) {
 
   SwapChain* s = SwapChain::getSwapChain();
-  s->init();
+  
   VkExtent2D size = s->size();
-  Queue* queue = d->getGraphicQueue(0);
-  PresentationQueue* presentQueue = d->getPresentQueue();
-  CommandBuffer commandBuffer;
-  commandBuffer.addSemaphore();
-  gui->initGui(&w, queue, &commandBuffer);
-
-  auto quadMesh = Geometry::generateQuad(true);
-  VertexBuffer* quadBuffer = new VertexBuffer({ quadMesh });
-  quadBuffer->allocate(queue, commandBuffer);
+  gui->resizeGui(&w);
 
   GraphicPipeline* phasorPipeline = new GraphicPipeline(vec3f({ 0,0,0 }), vec3f({ float(size.width),float(size.height),1.0f }), vec2f({ 0,0 }), vec2f({ float(size.width),float(size.height) }));
   VertexShaderModule* quadRendererVert = new VertexShaderModule(prefix + "shaders/phasor.vert.spv");
   FragmentShaderModule* quadRendererFrag = new FragmentShaderModule(prefix + "shaders/phasor.frag.spv");
-
-  
-  float frequency = 50.0f;
-  float bandwidth = 32.0f;
-  float direction = 1.0f;
-  int kernelPerCell = 16;
-  int profile = 0;
-  float pwmRatio = 0.2;
-
-
-  UniformBuffer noiseParameter;
-  noiseParameter.addVariable("_f", frequency);
-  noiseParameter.addVariable("_b", bandwidth);
-  noiseParameter.addVariable("_o", direction);
-  noiseParameter.addVariable("_impPerKernel", kernelPerCell);
-  noiseParameter.addVariable("_profile", profile);
-  noiseParameter.addVariable("_pwmRatio", pwmRatio);
-  noiseParameter.end();
 
   phasorPipeline->setVertexModule(quadRendererVert);
   phasorPipeline->setFragmentModule(quadRendererFrag);
@@ -65,7 +39,7 @@ int main() {
   phasorPipeline->setVertices({ quadBuffer });
   phasorPipeline->SetCullMode(VK_CULL_MODE_NONE);
 
-  phasorPipeline->addUniformBuffer(&noiseParameter, VK_SHADER_STAGE_FRAGMENT_BIT,0);
+  phasorPipeline->addUniformBuffer(&noiseParameter, VK_SHADER_STAGE_FRAGMENT_BIT, 0);
 
 
   SubpassAttachment SA;
@@ -79,8 +53,64 @@ int main() {
   phasorPass->addSubPass({ phasorPipeline, gui->getPipeline() }, SA);
   phasorPass->compile();
 
-  FrameBuffer frameBuffers(size.width, size.height);
-  phasorPass->prepareOutputFrameBuffer(frameBuffers);
+  return phasorPass;
+}
+
+
+int main() {
+
+  ErrorCheck::PrintError(true);
+
+  Window w("Phasor Noise", 1000, 1000);
+  glfwSetWindowSizeCallback(w.m_window, window_size_callback);
+  
+
+
+  Device* d = Device::getDevice();
+  d->initDevices(0, 1, w.m_windowParams, nullptr);
+  auto dPhysical = d->getPhysicalDevice();
+
+  SwapChain* s = SwapChain::getSwapChain();
+  s->init();
+  VkExtent2D size = s->size();
+  Queue* queue = d->getGraphicQueue(0);
+  PresentationQueue* presentQueue = d->getPresentQueue();
+  CommandBuffer commandBuffer;
+  commandBuffer.addSemaphore();
+  
+  gui = new ImGuiWrapper();
+
+  gui->initGui(&w, queue, &commandBuffer);
+
+  auto quadMesh = Geometry::generateQuad(true);
+  quadBuffer = new VertexBuffer({ quadMesh });
+  quadBuffer->allocate(queue, commandBuffer);
+
+ 
+
+  
+  float frequency = 50.0f;
+  float bandwidth = 32.0f;
+  float direction = 1.0f;
+  int kernelPerCell = 16;
+  int profile = 0;
+  float pwmRatio = 0.2;
+  float aspectRatio = size.width / size.height;
+
+
+  noiseParameter.addVariable("_f", frequency);
+  noiseParameter.addVariable("_b", bandwidth);
+  noiseParameter.addVariable("_o", direction);
+  noiseParameter.addVariable("_impPerKernel", kernelPerCell);
+  noiseParameter.addVariable("_profile", profile);
+  noiseParameter.addVariable("_pwmRatio", pwmRatio);
+  noiseParameter.addVariable("_aspectRatio", aspectRatio);
+  noiseParameter.end();
+
+  RenderPass * phasorPass = createRenderPass(w, queue, commandBuffer);
+
+  FrameBuffer* frameBuffer = new FrameBuffer(size.width, size.height);
+  phasorPass->prepareOutputFrameBuffer(*frameBuffer);
 
   const char* items[] = { "Complex view", "Complex view normalized", "Sinewave", "Sawtooth", "PWM"};
   
@@ -91,6 +121,20 @@ int main() {
     commandBuffer.wait();
     commandBuffer.resetFence();
     
+    if (g_resize) {
+      d->waitForAllCommands();
+      s->resize();
+      size = s->size();
+      aspectRatio = size.width / size.height;
+      delete phasorPass;
+      phasorPass = createRenderPass(w, queue, commandBuffer);
+      delete frameBuffer;
+      frameBuffer = new FrameBuffer(size.width, size.height);
+      phasorPass->prepareOutputFrameBuffer(*frameBuffer);
+
+      g_resize = false;
+    }
+
     
     ImGui::NewFrame();
 
@@ -124,6 +168,9 @@ int main() {
     noiseParameter.setVariable("_impPerKernel", kernelPerCell); 
     noiseParameter.setVariable("_profile", profile);
     noiseParameter.setVariable("_pwmRatio", pwmRatio);
+    noiseParameter.setVariable("_aspectRatio", aspectRatio);
+
+
 
     gui->prepareGui(queue, commandBuffer);
 
@@ -140,8 +187,8 @@ int main() {
     commandBuffer.beginRecord();
     noiseParameter.update(commandBuffer);
 
-    phasorPass->setSwapChainImage(frameBuffers, image);
-    phasorPass->draw(commandBuffer, frameBuffers, vec2u({ 0,0 }), vec2u({ size.width, size.height }), { { 0.1f, 0.2f, 0.3f, 1.0f }, { 1.0f, 0 } });
+    phasorPass->setSwapChainImage(*frameBuffer, image);
+    phasorPass->draw(commandBuffer, *frameBuffer, vec2u({ 0,0 }), vec2u({ size.width, size.height }), { { 0.1f, 0.2f, 0.3f, 1.0f }, { 1.0f, 0 } });
 
     commandBuffer.endRecord();
 
