@@ -40,10 +40,23 @@ int main() {
   VertexShaderModule* quadRendererVert = new VertexShaderModule(prefix + "shaders/phasor.vert.spv");
   FragmentShaderModule* quadRendererFrag = new FragmentShaderModule(prefix + "shaders/phasor.frag.spv");
 
-  UniformBuffer UBO;
-  UBO.addVariable("tmp", int(1));
-  UBO.end();
+  
+  float frequency = 50.0f;
+  float bandwidth = 32.0f;
+  float direction = 1.0f;
+  int kernelPerCell = 16;
+  int profile = 0;
+  float pwmRatio = 0.2;
 
+
+  UniformBuffer noiseParameter;
+  noiseParameter.addVariable("_f", frequency);
+  noiseParameter.addVariable("_b", bandwidth);
+  noiseParameter.addVariable("_o", direction);
+  noiseParameter.addVariable("_impPerKernel", kernelPerCell);
+  noiseParameter.addVariable("_profile", profile);
+  noiseParameter.addVariable("_pwmRatio", pwmRatio);
+  noiseParameter.end();
 
   phasorPipeline->setVertexModule(quadRendererVert);
   phasorPipeline->setFragmentModule(quadRendererFrag);
@@ -51,7 +64,9 @@ int main() {
 
   phasorPipeline->setVertices({ quadBuffer });
   phasorPipeline->SetCullMode(VK_CULL_MODE_NONE);
-  //phasorPipeline->addUniformBuffer(&UBO, VK_SHADER_STAGE_FRAGMENT_BIT);
+
+  phasorPipeline->addUniformBuffer(&noiseParameter, VK_SHADER_STAGE_FRAGMENT_BIT,0);
+
 
   SubpassAttachment SA;
   SA.showOnScreen = true;
@@ -67,13 +82,48 @@ int main() {
   FrameBuffer frameBuffers(size.width, size.height);
   phasorPass->prepareOutputFrameBuffer(frameBuffers);
 
+  const char* items[] = { "Complex view", "Complex view normalized", "Sinewave", "Sawtooth", "PWM"};
+  
+
   while (w.running()) {
     w.updateInput();
 
     commandBuffer.wait();
     commandBuffer.resetFence();
     
+    
     ImGui::NewFrame();
+
+    ImGui::Begin("Parameters");
+    ImGui::SliderFloat("Frequency", &frequency, 0.0f, 100.0f);
+    ImGui::SliderFloat("Bandwidth", &bandwidth, 0.0f, 100.0f);
+    ImGui::SliderFloat("Direction", &direction, 0.0f, 6.28318530718f);
+    ImGui::SliderInt("Kernel Density", &kernelPerCell, 1, 32);
+
+    if (ImGui::BeginCombo("Profile", items[profile])) 
+    {
+      for (int n = 0; n < IM_ARRAYSIZE(items); n++)
+      {
+        bool is_selected = (profile == n); 
+        if (ImGui::Selectable(items[n], is_selected))
+          profile = n;
+        if (is_selected)
+            ImGui::SetItemDefaultFocus();  
+      }
+      ImGui::EndCombo();
+    }
+    if (profile == 4) {
+      ImGui::SliderFloat("Ratio", &pwmRatio, 0.0, 1.0);
+    }
+
+    ImGui::End();
+
+    noiseParameter.setVariable("_f", frequency);
+    noiseParameter.setVariable("_b", bandwidth);
+    noiseParameter.setVariable("_o", direction);
+    noiseParameter.setVariable("_impPerKernel", kernelPerCell); 
+    noiseParameter.setVariable("_profile", profile);
+    noiseParameter.setVariable("_pwmRatio", pwmRatio);
 
     gui->prepareGui(queue, commandBuffer);
 
@@ -88,7 +138,8 @@ int main() {
 
     commandBuffer.resetFence();
     commandBuffer.beginRecord();
-    UBO.update(commandBuffer);
+    noiseParameter.update(commandBuffer);
+
     phasorPass->setSwapChainImage(frameBuffers, image);
     phasorPass->draw(commandBuffer, frameBuffers, vec2u({ 0,0 }), vec2u({ size.width, size.height }), { { 0.1f, 0.2f, 0.3f, 1.0f }, { 1.0f, 0 } });
 
@@ -98,5 +149,5 @@ int main() {
     s->presentImage(presentQueue, image, { commandBuffer.getSemaphore(0) });
   }
 
-  d->end();
+  d->waitForAllCommands();
 }

@@ -5,13 +5,19 @@ layout( location = 0 ) out vec4 color;
 
 #define M_PI 3.14159265358979323846
 
-//phasor noise parameters
-float _f = 50.0;
-float _b = 32.0;
-float _o = 1.0;
+layout( set = 0, binding = 0 ) uniform UniformBuffer {
+	float _f;
+	float _b;
+	float _o;
+	int _impPerKernel;
+	int _profile;
+	float _pwmRatio;
+};
+
 float _kr;
-int _impPerKernel = 16;
 int _seed = 1;
+//phasor noise parameters
+
 
 
 ///////////////////////////////////////////////
@@ -93,6 +99,22 @@ vec2 phasor_noise(vec2 uv)
 void main(){
 	init_noise();
 	vec2 noise = phasor_noise(uv);
-
-	color = vec4(noise, 0.0,0.0);
+	if(_profile == 0){ // complex view
+		color = vec4(noise, 0.0,0.0);
+	}
+	else if(_profile == 1){// normalised complex view
+		color = vec4(normalize(noise), 0.0,0.0);
+	}
+	else if(_profile == 2){// sinewave
+		float phi = atan(noise.y,noise.x);
+		color = vec4(vec3(sin(phi)*0.5 + 0.5),0.0);
+	}
+	else if(_profile == 3){// sawtooth
+		float phi = atan(noise.y,noise.x) + M_PI;
+		color = vec4(vec3(phi/(2.0 * M_PI)),0.0);
+	}
+	else if(_profile == 4){
+		float phi = atan(noise.y,noise.x) + M_PI;
+		color = vec4(vec3(phi < _pwmRatio * 2.0 * M_PI ? 1.0 : 0.0),0.0);
+	}
 }
