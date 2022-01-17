@@ -110,7 +110,7 @@ int main() {
   RenderPass * phasorPass = createRenderPass(w, queue, commandBuffer);
 
   FrameBuffer* frameBuffer = new FrameBuffer(size.width, size.height);
-  phasorPass->prepareOutputFrameBuffer(*frameBuffer);
+  phasorPass->prepareOutputFrameBuffer(queue, commandBuffer ,*frameBuffer);
 
   const char* items[] = { "Complex view", "Complex view normalized", "Sinewave", "Sawtooth", "PWM"};
   
@@ -130,7 +130,7 @@ int main() {
       phasorPass = createRenderPass(w, queue, commandBuffer);
       delete frameBuffer;
       frameBuffer = new FrameBuffer(size.width, size.height);
-      phasorPass->prepareOutputFrameBuffer(*frameBuffer);
+      phasorPass->prepareOutputFrameBuffer(queue, commandBuffer ,*frameBuffer);
 
       g_resize = false;
     }
